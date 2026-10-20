@@ -62,3 +62,39 @@ mka recoveryimage -j$(nproc --all)
 ```
 
 **Copyright (C) 2022 Team Win Recovery Project**
+
+## Branches
+
+| Branch | Layout | Notes |
+| --- | --- | --- |
+| `twrp-12.1` | physical (non-dynamic) | ext4 system/vendor, ext4+f2fs /data. PBRP-aligned baseline. |
+| `dynamic` | dynamic (super) | logical system/vendor/product/system_ext/odm, OmniROM product naming. |
+| `unified` | **both** | see below. |
+
+### `unified`
+
+One recovery that boots on both a stock (non-dynamic) begonia and a
+repartitioned (dynamic / `super`) one, mounting whichever filesystem the ROM
+shipped (ext4, f2fs or erofs).
+
+- `recovery/root/system/etc/recovery.fstab` carries two sets of entries:
+  - `logical` entries for `system`, `system_ext`, `product`, `vendor`, `odm`
+    (dynamic layout). TWRP discards a `logical` entry when
+    `Prepare_Super_Volume()` fails, i.e. when the device has no `super`
+    partition, so these are inert on non-dynamic devices.
+  - physical `by-name` entries for `system` and `vendor` (non-dynamic layout) -
+    the only ones left in the list once the logical entries are dropped.
+  - entries are ordered logical-first because `Find_Partition_By_Path()`
+    returns the first match; the dropped logical entries make the physical
+    fallback win only where it should.
+  - the filesystem type is `auto`, letting TWRP/libblkid mount ext4, f2fs or
+    erofs as shipped. `/data` keeps an explicit `ext4` + `f2fs` pair.
+- `BoardConfig.mk` keeps the physical image flags and adds the retrofitted
+  A-only super configuration (`BOARD_SUPER_PARTITION_*`,
+  `BOARD_XIAOMI_DYNAMIC_PARTITIONS_*`).
+- `device.mk` adds `PRODUCT_USE_DYNAMIC_PARTITIONS := true` and `fastbootd`.
+- `system.prop` adds `ro.fastbootd.available=true`.
+- Product/lunch names stay `pb_begonia-*` (PBRP convention).
+
+Not yet tested on a device: mounting erofs requires kernel erofs support, and the
+dual-entry fstab depends on TWRP discarding unprepared `logical` entries.
